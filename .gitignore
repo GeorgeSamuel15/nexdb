@@ -1,0 +1,15 @@
+node_modules/
+dist/
+*.ndb
+*.wal
+*.lock
+coverage/
+data/
+node_modules/
+dist/
+.env
+.env.*
+mydb/
+*.ndb
+*.wal
+*.lock

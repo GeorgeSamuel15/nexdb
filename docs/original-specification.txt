@@ -1,0 +1,1293 @@
+You are a senior database systems engineer, distributed systems engineer, storage-engine engineer, TypeScript engineer, Rust engineer, compiler engineer, and software architect.
+
+Build a new project called **NexDB**.
+
+NexDB is a serious relational database management system designed to demonstrate database internals, algorithms, systems programming, storage architecture, transactions, query processing, indexing, concurrency, and reliability.
+
+Do NOT build a simple CRUD application that connects to SQLite, PostgreSQL, MySQL, MongoDB, or another existing database and calls it NexDB.
+
+NexDB must implement its own core database engine.
+
+The first major version should be written primarily in **TypeScript and Node.js** so the architecture and algorithms are easy to understand and develop.
+
+The architecture must be designed so that performance-sensitive components such as storage, indexing, WAL, and concurrency can later be replaced or extended with **Rust** without redesigning the whole system.
+
+The long-term goal is to evolve NexDB into a serious standalone database system capable of being used by other applications.
+
+## Primary Stack
+
+Use:
+
+- TypeScript
+- Node.js
+- pnpm workspaces
+- Zod
+- Vitest
+- ESLint
+- Prettier
+
+For supporting tooling, you may also use:
+
+- Commander.js or a similar CLI framework
+- Fastify or raw Node TCP sockets for the database server
+- React + Vite only for an optional database administration interface
+- Playwright for admin UI testing
+- Docker for integration testing and deployment
+- GitHub Actions for CI
+
+Do NOT use SQLite, PostgreSQL, MySQL, MongoDB, Redis, Prisma, TypeORM, Sequelize, Drizzle, or another database engine as NexDB's storage engine.
+
+External databases may only be used in optional benchmarking or compatibility tests.
+
+---
+
+# Core Architecture
+
+Create NexDB as a monorepo.
+
+Suggested structure:
+
+```text
+nexdb/
+├── apps/
+│   ├── cli/
+│   ├── server/
+│   └── studio/
+│
+├── packages/
+│   ├── common/
+│   ├── storage/
+│   ├── buffer-pool/
+│   ├── catalog/
+│   ├── sql-parser/
+│   ├── planner/
+│   ├── executor/
+│   ├── indexes/
+│   ├── transactions/
+│   ├── wal/
+│   ├── recovery/
+│   ├── protocol/
+│   ├── client/
+│   └── testing/
+│
+├── benchmarks/
+├── docs/
+├── examples/
+├── scripts/
+├── .github/
+├── package.json
+├── pnpm-workspace.yaml
+├── tsconfig.base.json
+└── README.md
+```
+
+You may improve this architecture where necessary.
+
+Keep clear boundaries between components.
+
+No giant files.
+
+No circular dependencies.
+
+Use interfaces wherever a lower-level implementation may eventually be replaced by Rust.
+
+---
+
+# PHASE 1 — Storage Engine
+
+Build NexDB's own persistent storage engine.
+
+Implement database files using binary file I/O.
+
+Create a page-based architecture.
+
+Suggested initial page size:
+
+```text
+4096 bytes
+```
+
+Implement:
+
+- database file
+- page IDs
+- page headers
+- page allocation
+- free-page tracking
+- record storage
+- record identifiers
+- tuple serialization
+- tuple deserialization
+- primitive data types
+- null values
+- variable-length values
+- page checksums where appropriate
+
+Supported initial data types:
+
+```text
+INT
+BIGINT
+FLOAT
+BOOLEAN
+TEXT
+VARCHAR
+DATE
+TIMESTAMP
+BLOB
+```
+
+Design the type system so more types can be added later.
+
+Implement slotted pages for table records.
+
+Rows must actually be persisted to disk.
+
+NexDB must reopen an existing database after the process exits.
+
+Include corruption detection where practical.
+
+---
+
+# PHASE 2 — Buffer Pool
+
+Create a buffer manager between disk and query execution.
+
+Implement:
+
+- page cache
+- configurable buffer-pool size
+- dirty pages
+- page pinning
+- page unpinning
+- flushing
+- eviction
+
+Start with LRU or Clock replacement.
+
+Create clean interfaces so different eviction strategies can be implemented later.
+
+Expose buffer statistics such as:
+
+- hits
+- misses
+- evictions
+- dirty-page flushes
+
+---
+
+# PHASE 3 — Database Catalog
+
+Implement system metadata.
+
+NexDB must track:
+
+- databases
+- tables
+- columns
+- column types
+- indexes
+- constraints
+- schema versions
+- internal object IDs
+
+Create persistent system catalog tables.
+
+Do not rely entirely on JSON metadata files.
+
+The catalog should behave like part of the database itself.
+
+---
+
+# PHASE 4 — SQL Lexer and Parser
+
+Build NexDB's own SQL parsing system.
+
+Do not simply pass SQL into another database.
+
+Create:
+
+1. Lexer/tokenizer
+2. Parser
+3. AST
+4. Semantic validation
+
+Initial SQL support:
+
+```sql
+CREATE TABLE
+DROP TABLE
+ALTER TABLE
+
+INSERT
+SELECT
+UPDATE
+DELETE
+
+CREATE INDEX
+DROP INDEX
+
+BEGIN
+COMMIT
+ROLLBACK
+```
+
+Support expressions such as:
+
+```sql
+=
+!=
+<
+<=
+>
+>=
+AND
+OR
+NOT
++
+-
+*
+/
+```
+
+Support:
+
+```sql
+WHERE
+ORDER BY
+LIMIT
+OFFSET
+DISTINCT
+```
+
+Later add:
+
+```sql
+GROUP BY
+HAVING
+JOIN
+INNER JOIN
+LEFT JOIN
+```
+
+The AST must use strongly typed TypeScript structures.
+
+Provide useful syntax errors containing:
+
+- error type
+- line
+- column
+- token
+- expected syntax
+
+---
+
+# PHASE 5 — Query Planner
+
+Convert parsed SQL into logical query plans.
+
+Create plan nodes such as:
+
+- SequentialScan
+- IndexScan
+- Filter
+- Projection
+- Insert
+- Update
+- Delete
+- Sort
+- Limit
+- Aggregate
+- NestedLoopJoin
+
+Separate logical planning from physical execution.
+
+Eventually add basic query optimization.
+
+Start with rules such as:
+
+- predicate pushdown
+- projection pruning
+- use index when beneficial
+- avoid unnecessary scans
+
+Implement an `EXPLAIN` command.
+
+Example:
+
+```sql
+EXPLAIN SELECT name FROM users WHERE id = 10;
+```
+
+It should show the execution plan.
+
+---
+
+# PHASE 6 — Execution Engine
+
+Create an iterator-based or pipeline-based execution engine.
+
+A possible interface:
+
+```ts
+interface Executor<T> {
+  open(): Promise<void>;
+  next(): Promise<T | null>;
+  close(): Promise<void>;
+}
+```
+
+Implement executors for:
+
+- table scans
+- filters
+- projections
+- inserts
+- updates
+- deletes
+- sorting
+- index scans
+- aggregation
+- joins
+
+Ensure execution is separate from parsing and planning.
+
+---
+
+# PHASE 7 — B+ Tree Indexes
+
+Implement NexDB's own B+ Tree.
+
+Do not use JavaScript Maps as the persistent database index.
+
+Implement:
+
+- B+ Tree nodes
+- internal nodes
+- leaf nodes
+- search
+- insert
+- update
+- delete
+- node splitting
+- node merging
+- redistribution
+- root changes
+- persistent node storage
+- range scans
+
+Support indexes such as:
+
+```sql
+CREATE INDEX idx_users_email
+ON users(email);
+```
+
+Support unique indexes.
+
+Primary keys should automatically create appropriate indexes.
+
+Add comprehensive B+ Tree tests.
+
+Test:
+
+- sequential insertion
+- random insertion
+- deletion
+- root splitting
+- multi-level trees
+- range scans
+- duplicate handling
+- recovery after reopening the database
+
+---
+
+# PHASE 8 — Constraints
+
+Implement:
+
+- PRIMARY KEY
+- UNIQUE
+- NOT NULL
+- DEFAULT
+
+Later implement:
+
+- FOREIGN KEY
+- CHECK
+
+Constraint validation must occur inside the database engine.
+
+Do not delegate it to application code.
+
+---
+
+# PHASE 9 — Transactions
+
+Create a transaction manager.
+
+Support:
+
+```sql
+BEGIN;
+
+INSERT INTO accounts ...;
+
+UPDATE accounts ...;
+
+COMMIT;
+```
+
+and:
+
+```sql
+ROLLBACK;
+```
+
+Each transaction should have:
+
+- transaction ID
+- state
+- start timestamp where applicable
+- commit state
+- rollback behavior
+
+Begin with a manageable concurrency-control strategy.
+
+Possible initial approach:
+
+- strict two-phase locking
+
+Implement:
+
+- shared locks
+- exclusive locks
+- lock table
+- lock waiting
+- lock release
+
+Detect or prevent basic deadlocks.
+
+Later prepare the architecture for MVCC.
+
+---
+
+# PHASE 10 — Write-Ahead Log
+
+Implement write-ahead logging.
+
+Changes must be logged before modified database pages are flushed.
+
+Create WAL records for operations such as:
+
+- transaction begin
+- insert
+- update
+- delete
+- page modification
+- transaction commit
+- transaction abort
+- checkpoint
+
+Each log record should contain:
+
+- LSN
+- transaction ID
+- operation type
+- relevant page or row IDs
+- before/after information where needed
+
+Use durable file writes where appropriate.
+
+---
+
+# PHASE 11 — Crash Recovery
+
+Implement crash recovery.
+
+When NexDB starts after an improper shutdown, it should inspect the WAL and recover the database.
+
+Implement a practical recovery mechanism inspired by ARIES.
+
+At minimum support:
+
+- committed transaction redo
+- uncommitted transaction undo
+- checkpoints
+- clean shutdown detection
+
+Create automated crash simulations.
+
+Example test:
+
+1. Start transaction.
+2. Modify records.
+3. Kill process before commit.
+4. Restart NexDB.
+5. Verify database consistency.
+
+Also test committed operations surviving crashes.
+
+---
+
+# PHASE 12 — Concurrency
+
+Support multiple simultaneous database clients.
+
+Prevent:
+
+- lost updates
+- dirty writes
+- inconsistent page changes
+
+Start with locking.
+
+Document supported isolation semantics.
+
+Eventually prepare for:
+
+```text
+READ COMMITTED
+REPEATABLE READ
+SERIALIZABLE
+```
+
+Design interfaces so MVCC could later replace or complement lock-based concurrency.
+
+---
+
+# PHASE 13 — Database Server
+
+Turn NexDB into a standalone database server.
+
+Create something such as:
+
+```bash
+nexdb server --data ./data --port 7432
+```
+
+Do NOT expose the database only through HTTP.
+
+Create a real database client/server protocol over TCP.
+
+Implement:
+
+- connection handshake
+- authentication
+- database selection
+- SQL execution
+- prepared query support
+- query responses
+- error responses
+- transaction commands
+- connection close
+- protocol versioning
+
+Use length-prefixed messages or another robust framing format.
+
+Document the wire protocol.
+
+---
+
+# PHASE 14 — Authentication
+
+Add database users.
+
+Commands should eventually support concepts such as:
+
+```sql
+CREATE USER george WITH PASSWORD '...';
+```
+
+Implement:
+
+- password hashing
+- user authentication
+- sessions
+- roles
+- permissions
+
+Permissions should eventually include:
+
+```text
+CONNECT
+SELECT
+INSERT
+UPDATE
+DELETE
+CREATE
+DROP
+ADMIN
+```
+
+Never store plaintext passwords.
+
+---
+
+# PHASE 15 — NexDB CLI
+
+Create an interactive command-line client.
+
+Example:
+
+```bash
+nexdb
+```
+
+Then:
+
+```text
+NexDB 0.1.0
+
+nexdb> CREATE DATABASE shop;
+
+nexdb> USE shop;
+
+nexdb> CREATE TABLE users (
+  id BIGINT PRIMARY KEY,
+  name TEXT NOT NULL,
+  email TEXT UNIQUE
+);
+
+nexdb> INSERT INTO users
+VALUES (1, 'George', 'george@example.com');
+
+nexdb> SELECT * FROM users;
+
++----+--------+--------------------+
+| id | name   | email              |
++----+--------+--------------------+
+| 1  | George | george@example.com |
++----+--------+--------------------+
+
+1 row returned.
+```
+
+The CLI should support:
+
+- history
+- multiline queries
+- pretty tables
+- timing
+- database switching
+- `.tables`
+- `.schema`
+- `.indexes`
+- `.help`
+- `.exit`
+
+Make it feel like a real database shell.
+
+---
+
+# PHASE 16 — Client SDK
+
+Create a TypeScript client library.
+
+Example:
+
+```ts
+import { NexDB } from "@nexdb/client";
+
+const db = new NexDB({
+  host: "localhost",
+  port: 7432,
+  user: "admin",
+  password: process.env.NEXDB_PASSWORD
+});
+
+await db.connect();
+
+const result = await db.query(
+  "SELECT * FROM users WHERE id = ?",
+  [1]
+);
+```
+
+Support parameterized queries.
+
+Do not build SQL strings by directly injecting parameters.
+
+Prepare the protocol for prepared statements.
+
+---
+
+# PHASE 17 — NexDB Studio
+
+After the engine and server are working, create an optional administration UI called:
+
+**NexDB Studio**
+
+Use:
+
+- React
+- TypeScript
+- Vite
+- Tailwind CSS
+
+Features:
+
+- connect to NexDB instance
+- list databases
+- list tables
+- inspect schemas
+- view indexes
+- SQL query editor
+- query results grid
+- query execution time
+- database size
+- buffer statistics
+- transaction statistics
+- WAL information
+- running connections
+- query plans
+
+Do not prioritize Studio over database correctness.
+
+The database engine comes first.
+
+---
+
+# PHASE 18 — Observability
+
+Create an internal metrics system.
+
+Expose metrics such as:
+
+```text
+queries_total
+queries_failed
+queries_running
+transactions_total
+transactions_aborted
+buffer_hits
+buffer_misses
+pages_read
+pages_written
+wal_bytes_written
+active_connections
+database_size
+```
+
+Provide structured logs.
+
+Allow configurable log levels:
+
+```text
+error
+warn
+info
+debug
+trace
+```
+
+---
+
+# PHASE 19 — EXPLAIN and EXPLAIN ANALYZE
+
+Implement:
+
+```sql
+EXPLAIN SELECT ...
+```
+
+and eventually:
+
+```sql
+EXPLAIN ANALYZE SELECT ...
+```
+
+Show:
+
+- scan type
+- selected index
+- estimated rows
+- actual rows
+- filters
+- execution time
+- planning time
+
+---
+
+# PHASE 20 — Query Optimizer
+
+Once the initial database is stable, improve planning.
+
+Implement table statistics such as:
+
+- row count
+- page count
+- approximate distinct values
+- null percentage
+
+Use these statistics when selecting between:
+
+- sequential scans
+- index scans
+
+Eventually implement simple join-order optimization.
+
+Do not overbuild this before the core engine works.
+
+---
+
+# PHASE 21 — Rust Integration Architecture
+
+Design the TypeScript codebase so lower-level components can later move to Rust.
+
+Potential Rust modules:
+
+```text
+storage
+buffer pool
+b+ tree
+WAL
+recovery
+transaction manager
+query execution hot paths
+```
+
+Create interfaces that make replacement possible through:
+
+- N-API
+- native Node addons
+- FFI
+- or a future standalone Rust engine
+
+Do NOT introduce Rust until the TypeScript engine actually works.
+
+The TypeScript implementation should remain understandable and independently testable.
+
+---
+
+# Testing Requirements
+
+Testing is critical.
+
+Use Vitest.
+
+Create unit tests for:
+
+- serializer
+- pages
+- slotted pages
+- page manager
+- buffer manager
+- B+ Tree
+- tokenizer
+- parser
+- planner
+- executor
+- constraints
+- transaction manager
+- lock manager
+- WAL
+- recovery
+
+Create integration tests covering complete workflows.
+
+Example:
+
+```text
+Create DB
+→ Create table
+→ Insert 10,000 records
+→ Create index
+→ Query indexed field
+→ Restart process
+→ Verify records remain
+```
+
+Create crash-recovery tests.
+
+Create corruption tests.
+
+Create concurrent transaction tests.
+
+Create randomized B+ Tree tests.
+
+Use property-based testing where useful.
+
+---
+
+# Benchmarking
+
+Create a benchmark suite.
+
+Benchmark:
+
+- sequential inserts
+- random inserts
+- point SELECT
+- index SELECT
+- sequential scan
+- updates
+- deletes
+- transaction commits
+- startup recovery
+
+Do NOT make misleading claims that NexDB is faster than PostgreSQL or SQLite.
+
+Performance comparisons should be educational and transparent.
+
+---
+
+# Security Requirements
+
+Treat NexDB as a real server.
+
+Implement:
+
+- secure password hashing
+- safe network message parsing
+- maximum message sizes
+- input validation
+- SQL parser safety
+- connection limits
+- authentication timeouts
+- rate limiting where reasonable
+- path traversal protection
+- safe database-file handling
+- file permissions
+- structured audit events
+
+Never use `eval`.
+
+Never deserialize arbitrary executable JavaScript.
+
+Never trust client-supplied lengths or identifiers without validation.
+
+---
+
+# Developer Experience
+
+The repository should support:
+
+```bash
+pnpm install
+pnpm build
+pnpm test
+pnpm lint
+pnpm typecheck
+pnpm dev
+```
+
+Provide useful scripts such as:
+
+```bash
+pnpm nexdb
+pnpm server
+pnpm studio
+pnpm test:integration
+pnpm test:recovery
+pnpm benchmark
+```
+
+Use strict TypeScript.
+
+Avoid `any` unless absolutely necessary.
+
+Use discriminated unions and generics appropriately.
+
+---
+
+# Documentation
+
+Create comprehensive documentation.
+
+README should contain:
+
+1. What NexDB is
+2. Why it exists
+3. Architecture
+4. Quick start
+5. SQL support
+6. Storage architecture
+7. B+ Tree architecture
+8. Query pipeline
+9. Transaction model
+10. WAL
+11. Recovery
+12. Client/server protocol
+13. Security
+14. Testing
+15. Benchmarks
+16. Current limitations
+17. Roadmap
+18. Rust migration plan
+
+Also create:
+
+```text
+docs/
+├── architecture.md
+├── storage-engine.md
+├── page-format.md
+├── btree.md
+├── sql-parser.md
+├── query-planner.md
+├── execution-engine.md
+├── transactions.md
+├── wal.md
+├── recovery.md
+├── concurrency.md
+├── protocol.md
+├── security.md
+└── rust-roadmap.md
+```
+
+Use diagrams where helpful.
+
+---
+
+# Important Engineering Rules
+
+Do not fake features.
+
+Do not put placeholder implementations and call them complete.
+
+Do not claim crash recovery works unless there are tests proving it.
+
+Do not claim transactions are ACID unless the implemented guarantees justify it.
+
+Do not call an in-memory JavaScript Map a persistent index.
+
+Do not hide core database behavior behind third-party database engines.
+
+Do not use ORM libraries to implement the storage engine.
+
+Do not build the UI first.
+
+Do not implement everything inside one application.
+
+Avoid massive files.
+
+Avoid unexplained magic numbers.
+
+Use constants for page layouts and protocol types.
+
+Document binary formats.
+
+Every persisted binary structure must be versioned or designed for future versioning.
+
+---
+
+# Build Order
+
+Follow this order unless a dependency requires adjustment:
+
+```text
+Phase 0  — Monorepo architecture
+Phase 1  — Binary storage
+Phase 2  — Page manager
+Phase 3  — Slotted pages
+Phase 4  — Buffer pool
+Phase 5  — Catalog
+Phase 6  — SQL lexer
+Phase 7  — SQL parser
+Phase 8  — Query planner
+Phase 9  — Execution engine
+Phase 10 — Basic CRUD SQL
+Phase 11 — B+ Tree
+Phase 12 — Indexed queries
+Phase 13 — Constraints
+Phase 14 — Transactions
+Phase 15 — Lock manager
+Phase 16 — WAL
+Phase 17 — Crash recovery
+Phase 18 — TCP server
+Phase 19 — NexDB CLI
+Phase 20 — TypeScript client
+Phase 21 — Authentication and authorization
+Phase 22 — Query optimizer
+Phase 23 — Observability
+Phase 24 — NexDB Studio
+Phase 25 — Benchmarks
+Phase 26 — Hardening
+Phase 27 — Rust integration preparation
+```
+
+Do not skip foundational phases to make the application look finished sooner.
+
+---
+
+# First Major Milestone
+
+The first serious milestone is complete when this workflow actually works:
+
+```bash
+nexdb init ./mydb
+
+nexdb ./mydb
+```
+
+Then:
+
+```sql
+CREATE TABLE users (
+  id BIGINT PRIMARY KEY,
+  username VARCHAR(100) NOT NULL,
+  email VARCHAR(255) UNIQUE,
+  age INT
+);
+
+INSERT INTO users
+VALUES (
+  1,
+  'george',
+  'george@nexdb.dev',
+  25
+);
+
+SELECT *
+FROM users
+WHERE id = 1;
+```
+
+Close NexDB completely.
+
+Restart it.
+
+Run:
+
+```sql
+SELECT *
+FROM users;
+```
+
+The record must still exist.
+
+Then create:
+
+```sql
+CREATE INDEX idx_users_email
+ON users(email);
+```
+
+Restart again.
+
+The index must remain valid.
+
+`EXPLAIN` should show an index scan for:
+
+```sql
+SELECT *
+FROM users
+WHERE email = 'george@nexdb.dev';
+```
+
+---
+
+# Transaction Milestone
+
+This must work:
+
+```sql
+BEGIN;
+
+UPDATE accounts
+SET balance = balance - 500
+WHERE id = 1;
+
+UPDATE accounts
+SET balance = balance + 500
+WHERE id = 2;
+
+COMMIT;
+```
+
+If NexDB crashes during the transaction, recovery must leave the database in a valid state.
+
+Also verify:
+
+```sql
+BEGIN;
+
+DELETE FROM users
+WHERE id = 1;
+
+ROLLBACK;
+```
+
+The user must still exist afterward.
+
+---
+
+# Quality Standard
+
+Treat NexDB as an engineering project that could eventually become a real open-source database.
+
+The code should demonstrate knowledge of:
+
+- data structures
+- algorithms
+- filesystems
+- memory management concepts
+- caching
+- database internals
+- transactions
+- concurrency
+- networking
+- compilers/parsers
+- fault tolerance
+- testing
+- performance engineering
+- system design
+
+The project must be impressive because of what actually happens internally, not because of a flashy dashboard.
+
+---
+
+# How To Work
+
+Work continuously through the phases.
+
+For each phase:
+
+1. Inspect the existing repository first.
+2. Preserve working functionality.
+3. Implement the phase completely.
+4. Add tests.
+5. Run tests.
+6. Run typechecking.
+7. Run linting.
+8. Fix failures before continuing.
+9. Update documentation.
+10. Commit the architecture cleanly before beginning the next major subsystem.
+
+Do not ask me to manually write code that you can create yourself.
+
+Do not repeatedly stop after individual files.
+
+Continue implementing dependent files required by the current phase.
+
+If something cannot safely be implemented yet because a prerequisite is missing, implement the prerequisite first.
+
+Do not mark a phase complete just because files exist.
+
+A phase is complete only when the relevant functionality works and its tests pass.
+
+At important milestones, provide:
+
+```text
+NEXDB STATUS
+
+Completed:
+...
+
+Working:
+...
+
+Tests:
+...
+
+Architecture:
+...
+
+Next:
+...
+```
+
+Start now by creating the complete NexDB repository architecture, root configuration, TypeScript configuration, shared types, binary storage abstractions, page format, storage manager, and the tests required for the first persistent-storage milestone.
+
+Then continue through the roadmap systematically.

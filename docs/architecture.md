@@ -1,0 +1,5 @@
+# Component boundaries
+
+common defines values, codecs, errors and CRC. storage provides slotted pages, disk I/O, OS process locks and a persisted free-page manager. buffer-pool depends on PageStore. catalog depends on common and indexes. parser produces typed statements; planner selects scan plans using catalog metadata. executor evaluates expressions and iterator operators, owns the embedded session and commits via Persistence. wal encodes and decodes redo frames; recovery validates snapshots. transactions provides the server session lock. protocol frames and validates messages; client and server use it independently.
+
+The first implementation optimizes inspectability, not throughput. Full catalog copies enforce statement atomicity. A snapshot commit rewrites all pages. Catalog metadata and B+ nodes use the same binary tuple/page format as rows. There are no external database engines. Rust work should preserve these interfaces and avoid sharing mutable JS objects across a native boundary.

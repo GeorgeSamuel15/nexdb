@@ -1,0 +1,38 @@
+{
+  "name": "nexdb",
+  "version": "0.2.1",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "packageManager": "pnpm@11.25.0",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.check.json",
+    "test": "vitest run",
+    "test:native": "node --import tsx --test tests/*.test.ts",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "nexdb": "node --import tsx apps/cli/src/index.ts",
+    "dev": "node --import tsx apps/cli/src/index.ts",
+    "server": "node --import tsx apps/server/src/index.ts",
+    "benchmark": "node --import tsx benchmarks/run.ts",
+    "test:recovery": "node --import tsx --test tests/recovery.test.ts",
+    "test:integration": "node --import tsx --test tests/engine.test.ts",
+    "example:overflow": "node --import tsx examples/overflow.ts",
+    "example:client": "node --import tsx examples/client.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "~5.9.3",
+    "vitest": "^3.2.4",
+    "eslint": "^9.39.0",
+    "typescript-eslint": "^8.46.0",
+    "prettier": "^3.6.2",
+    "tsx": "^4.20.0"
+  },
+  "dependencies": {
+    "zod": "^4.1.0"
+  }
+}

@@ -1,0 +1,5 @@
+# Storage engine
+
+DiskStore uses positional binary file I/O, verifies full reads/writes, and syncs on demand. PageManager persists free state in page header offset 6, scans that state when opened, and reuses released IDs. SlottedPage supports append, fetch, deletion and compaction. BufferPool uses LRU timestamps, pin counts and dirty flags; eviction refuses when every frame is pinned. Callers must seal modified pages before flush.
+
+Snapshot persistence is a distinct PageStore consumer: startup reads pages through BufferPool and loads catalog records. Commits build fresh page images, sync WAL, then write the complete data image. Snapshot rewriting already compacts and removes unused tail pages. The incremental PageManager is tested but is not the SQL engine's allocation path yet. Records over 4060 bytes use consecutive kind-2 overflow pages, each containing one fragment. Startup and WAL replay validate complete fragment chains before accepting records. The serialized record limit is 16 MiB; the snapshot limit remains 256 MiB. Do not combine raw DiskStore writes with a live Database session.
